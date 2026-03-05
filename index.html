@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Gia Phả Dòng Họ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .modal { transition: opacity 0.25s ease; }
+        .hidden { display: none !important; }
+        
+        /* Cấu trúc Sơ đồ cây */
+        #view-tree {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 300px);
+            min-height: 600px;
+            background: #f8fafc;
+            border-radius: 24px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        .tree-viewport {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            cursor: grab;
+        }
+        .tree-viewport:active { cursor: grabbing; }
+
+        #tree-wrapper {
+            position: relative;
+            padding: 80px;
+            min-width: 100%;
+            min-height: 100%;
+            transition: width 0.2s ease-out, height 0.2s ease-out;
+        }
+
+        .tree-container {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            transform-origin: 0 0;
+            transition: transform 0.2s ease-out;
+            min-width: max-content;
+        }
+
+        .tree-level {
+            display: flex;
+            justify-content: center;
+            position: relative;
+            margin-bottom: 100px;
+            gap: 40px;
+        }
+
+        /* Nhóm anh em để căn giữa theo cha */
+        .sibling-group {
+            display: flex;
+            gap: 20px;
+            position: relative;
+            justify-content: center;
+        }
+
+        .member-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Đường kẻ dọc nối lên cha */
+        .has-parent::before {
+            content: '';
+            position: absolute;
+            top: -50px;
+            left: 50%;
+            width: 2px;
+            height: 50px;
+            background: #64748b;
+        }
+
+        /* Đường kẻ dọc nối xuống con */
+        .has-children::after {
+            content: '';
+            position: absolute;
+            bottom: -50px;
+            left: 50%;
+            width: 2px;
+            height: 50px;
+            background: #64748b;
+        }
+
+        /* Đường kẻ ngang nối các anh em */
+        .sibling-connector {
+            position: absolute;
+            top: -50px;
+            height: 2px;
+            background: #64748b;
+            z-index: 5;
+        }
+
+        .member-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            padding: 16px;
+            border-radius: 16px;
+            width: 260px; /* Default single width */
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            z-index: 10;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        /* Expanded card for couples */
+        .member-card.has-spouse {
+            width: 520px;
+            display: flex;
+            text-align: left;
+            padding: 0; /* padding is handled by inner containers */
+        }
+        
+        .card-half {
+            flex: 1;
+            padding: 16px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .card-half:first-child { 
+            border-right: 2px dashed #e2e8f0; 
+            border-top-left-radius: 14px;
+            border-bottom-left-radius: 14px;
+        }
+        
+        .card-half:last-child {
+            border-top-right-radius: 14px;
+            border-bottom-right-radius: 14px;
+        }
+
+        .member-card:hover { 
+            transform: scale(1.05);
+            border-color: #3b82f6;
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.2);
+        }
+
+        .gender-male { border-top: 6px solid #3b82f6; }
+        .gender-female { border-top: 6px solid #ec4899; }
+
+        .status-badge {
+            position: absolute;
+            top: -12px;
+            right: 15px; /* Default right */
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            z-index: 20;
+        }
+        
+        .status-badge.left-badge {
+            right: auto;
+            left: 15px;
+        }
+
+        /* Zoom Controls */
+        .zoom-controls {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+        .zoom-btn {
+            width: 44px;
+            height: 44px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #475569;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+        }
+        .zoom-btn:hover { background: #f8fafc; color: #3b82f6; transform: translateY(-2px); }
+
+        @media print {
+            header, .no-print, .zoom-controls, #btn-view-list { display: none !important; }
+            #view-tree { height: auto; border: none; overflow: visible; }
+            .tree-viewport { overflow: visible; padding: 0; }
+            .tree-container { transform: scale(0.8) !important; transform-origin: top center; }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Gia Phả Dòng Họ Nguyễn</h1>
+                <p class="text-slate-500 font-medium">Được xây dựng bởi con cháu cụ Định</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center transition shadow-lg active:scale-95">
+                    Thêm thành viên
+                </button>
+                <button onclick="document.getElementById('import-file').click()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-bold transition">
+                    Nhập dữ liệu
+                </button>
+                <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
+                <button onclick="exportData()" class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold transition">
+                    Xuất dữ liệu (.json)
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 no-print">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="bg-blue-100 p-3 rounded-xl text-blue-600">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a7 7 0 00-7 7v1h12v-1a7 7 0 00-7-7z"></path></svg>
+                </div>
+                <div>
+                    <p class="text-slate-500 text-xs font-bold uppercase tracking-wider">Thành viên</p>
+                    <h3 id="stat-total" class="text-2xl font-black text-slate-800">0</h3>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="bg-emerald-100 p-3 rounded-xl text-emerald-600">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                </div>
+                <div>
+                    <p class="text-slate-500 text-xs font-bold uppercase tracking-wider">Số đời</p>
+                    <h3 id="stat-generations" class="text-2xl font-black text-slate-800">0</h3>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="bg-red-100 p-3 rounded-xl text-red-600">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"></path></svg>
+                </div>
+                <div>
+                    <p class="text-slate-500 text-xs font-bold uppercase tracking-wider">Đã khuất</p>
+                    <h3 id="stat-anniversaries" class="text-2xl font-black text-slate-800">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- View Switcher -->
+        <div class="mb-6 flex gap-2 p-1 bg-slate-200 rounded-xl w-fit no-print">
+            <button onclick="switchView('list')" id="btn-view-list" class="px-6 py-2 rounded-lg font-bold transition-all text-blue-600 bg-white shadow-sm">Danh sách</button>
+            <button onclick="switchView('tree')" id="btn-view-tree" class="px-6 py-2 rounded-lg font-bold transition-all text-slate-600 hover:bg-slate-300">Sơ đồ cây</button>
+        </div>
+
+        <!-- List View -->
+        <div id="view-list" class="space-y-4">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 no-print">
+                <input type="text" id="search-input" oninput="renderMembers()" placeholder="Tìm theo tên hoặc địa điểm mộ..." class="flex-1 p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 border-b">
+                        <tr>
+                            <th class="p-4 font-bold text-slate-500 text-xs uppercase">Đời</th>
+                            <th class="p-4 font-bold text-slate-500 text-xs uppercase">Họ và Tên</th>
+                            <th class="p-4 font-bold text-slate-500 text-xs uppercase">Thông tin (Kèm Vợ/Chồng)</th>
+                            <th class="p-4 text-right">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="member-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tree View -->
+        <div id="view-tree" class="hidden">
+            <div class="zoom-controls no-print">
+                <button onclick="zoomTree(0.1)" class="zoom-btn" title="Phóng to">+</button>
+                <button onclick="zoomTree(-0.1)" class="zoom-btn" title="Thu nhỏ">-</button>
+                <button onclick="resetZoom()" class="zoom-btn" title="Đặt lại">⟲</button>
+            </div>
+            <div class="tree-viewport" id="tree-viewport">
+                <div id="tree-wrapper">
+                    <div id="tree-canvas" class="tree-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Form -->
+    <div id="modal" class="modal fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4 no-print">
+        <div class="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl">
+            <div class="p-6 border-b flex justify-between items-center bg-slate-50">
+                <h2 id="modal-title" class="text-xl font-black text-slate-800">Thành viên mới</h2>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl font-bold p-2">&times;</button>
+            </div>
+            <form id="member-form" class="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+                <input type="hidden" id="edit-id">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Thông tin chính -->
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Họ và Tên *</label>
+                        <input type="text" id="fullname" required class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="nguyễn văn a">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Đời thứ *</label>
+                        <input type="number" id="generation" required min="1" oninput="updateParentOptions()" class="w-full p-3 rounded-xl border border-slate-200 bg-blue-50 font-black text-blue-700">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Giới tính *</label>
+                        <select id="gender" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
+                            <option value="Nam">Nam</option>
+                            <option value="Nữ">Nữ</option>
+                        </select>
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Cha của người này là?</label>
+                        <select id="parent-id" class="w-full p-3 rounded-xl border border-slate-200 bg-slate-50">
+                            <option value="">-- Nhập 'Đời thứ' để lọc --</option>
+                        </select>
+                    </div>
+
+                    <div class="md:col-span-2 grid grid-cols-3 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Ngày sinh / Năm sinh</label>
+                            <input type="text" id="birthdate" class="w-full p-3 rounded-xl border border-slate-200" placeholder="10/02/1950">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Loại lịch</label>
+                            <select id="birth-type" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
+                                <option value="Dương lịch">Dương lịch</option>
+                                <option value="Âm lịch">Âm lịch</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Trạng thái sống</label>
+                        <select id="life-status" onchange="toggleDeathFields()" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
+                            <option value="Còn sống">Còn sống</option>
+                            <option value="Đã mất">Đã mất</option>
+                        </select>
+                    </div>
+
+                    <div id="death-fields" class="md:col-span-2 grid grid-cols-1 gap-6 hidden p-4 bg-red-50 rounded-2xl border border-red-100">
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="col-span-2">
+                                <label class="block text-sm font-bold text-red-700 mb-2">Ngày mất / Năm mất</label>
+                                <input type="text" id="deathdate" class="w-full p-3 rounded-xl border border-red-200" placeholder="05/08/2020">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-red-700 mb-2">Loại lịch</label>
+                                <select id="death-type" class="w-full p-3 rounded-xl border border-red-200 bg-white">
+                                    <option value="Âm lịch">Âm lịch</option>
+                                    <option value="Dương lịch">Dương lịch</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-red-700 mb-2">Vị trí mộ</label>
+                            <input type="text" id="grave-location" class="w-full p-3 rounded-xl border border-red-200" placeholder="Nghĩa trang quê nhà...">
+                        </div>
+                    </div>
+
+                    <!-- Toggle Vợ/Chồng -->
+                    <div class="md:col-span-2 pt-4 border-t">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="has-spouse" onchange="toggleSpouseFields()" class="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                            <span class="text-base font-bold text-pink-600">Đã kết hôn (Thêm thông tin Vợ/Chồng)</span>
+                        </label>
+                    </div>
+
+                    <!-- Khối thông tin Vợ/Chồng -->
+                    <div id="spouse-fields-container" class="md:col-span-2 hidden grid-cols-1 md:grid-cols-2 gap-6 bg-pink-50 p-5 rounded-2xl border border-pink-100">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Họ và Tên Vợ/Chồng</label>
+                            <input type="text" id="spouse-name" class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="trần thị b">
+                        </div>
+
+                        <div class="md:col-span-2 grid grid-cols-3 gap-3">
+                            <div class="col-span-2">
+                                <label class="block text-sm font-bold text-slate-700 mb-2">Ngày sinh / Năm sinh</label>
+                                <input type="text" id="spouse-birthdate" class="w-full p-3 rounded-xl border border-slate-200" placeholder="15/05/1955">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-2">Loại lịch</label>
+                                <select id="spouse-birth-type" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
+                                    <option value="Dương lịch">Dương lịch</option>
+                                    <option value="Âm lịch">Âm lịch</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Trạng thái sống</label>
+                            <select id="spouse-life-status" onchange="toggleSpouseDeathFields()" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
+                                <option value="Còn sống">Còn sống</option>
+                                <option value="Đã mất">Đã mất</option>
+                            </select>
+                        </div>
+
+                        <div id="spouse-death-fields" class="md:col-span-2 grid grid-cols-1 gap-6 hidden p-4 bg-slate-100/50 rounded-2xl border border-slate-200">
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="col-span-2">
+                                    <label class="block text-sm font-bold text-slate-700 mb-2">Ngày mất / Năm mất</label>
+                                    <input type="text" id="spouse-deathdate" class="w-full p-3 rounded-xl border border-slate-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 mb-2">Loại lịch</label>
+                                    <select id="spouse-death-type" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
+                                        <option value="Âm lịch">Âm lịch</option>
+                                        <option value="Dương lịch">Dương lịch</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 mb-2">Vị trí mộ</label>
+                                <input type="text" id="spouse-grave-location" class="w-full p-3 rounded-xl border border-slate-200">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="flex justify-end gap-3 pt-6 border-t mt-8">
+                    <button type="button" onclick="closeModal()" class="px-6 py-3 font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition">Hủy</button>
+                    <button type="submit" class="px-8 py-3 font-black bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition active:scale-95">Lưu thông tin</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let members = JSON.parse(localStorage.getItem('family_v3_data')) || [];
+        let currentZoom = 1;
+
+        // Trích xuất năm để tính tuổi
+        function getYear(dateString) {
+            if (!dateString) return null;
+            const parts = dateString.split('/');
+            const yearStr = parts[parts.length - 1];
+            const year = parseInt(yearStr);
+            return isNaN(year) ? null : year;
+        }
+
+        // Tính tuổi chung
+        function getAgeStrFromDates(birthdate, lifeStatus, deathdate) {
+            const birthYear = getYear(birthdate);
+            if (!birthYear) return '';
+            
+            if (lifeStatus === 'Đã mất') {
+                const deathYear = getYear(deathdate);
+                if (deathYear && deathYear >= birthYear) {
+                    return `Hưởng thọ ${deathYear - birthYear} tuổi`;
+                }
+                return '';
+            } else {
+                const currentYear = new Date().getFullYear();
+                return `${currentYear - birthYear} tuổi`;
+            }
+        }
+
+        function formatInput(text) {
+            if (!text) return "";
+            return text.trim().toLowerCase().split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+        }
+
+        function saveToLocal() {
+            localStorage.setItem('family_v3_data', JSON.stringify(members));
+            updateStats();
+            if(!document.getElementById('view-list').classList.contains('hidden')) {
+                renderMembers();
+            } else {
+                renderTree();
+            }
+        }
+
+        function toggleDeathFields() {
+            const status = document.getElementById('life-status').value;
+            document.getElementById('death-fields').classList.toggle('hidden', status !== 'Đã mất');
+        }
+
+        function toggleSpouseFields() {
+            const hasSpouse = document.getElementById('has-spouse').checked;
+            const container = document.getElementById('spouse-fields-container');
+            if(hasSpouse) {
+                container.classList.remove('hidden');
+                container.classList.add('grid');
+            } else {
+                container.classList.add('hidden');
+                container.classList.remove('grid');
+            }
+            toggleSpouseDeathFields();
+        }
+
+        function toggleSpouseDeathFields() {
+            const status = document.getElementById('spouse-life-status').value;
+            document.getElementById('spouse-death-fields').classList.toggle('hidden', status !== 'Đã mất');
+        }
+
+        function switchView(view) {
+            document.getElementById('view-list').classList.toggle('hidden', view !== 'list');
+            document.getElementById('view-tree').classList.toggle('hidden', view !== 'tree');
+            
+            const btnList = document.getElementById('btn-view-list');
+            const btnTree = document.getElementById('btn-view-tree');
+            
+            if(view === 'list') {
+                btnList.className = "px-6 py-2 rounded-lg font-bold transition-all text-blue-600 bg-white shadow-sm";
+                btnTree.className = "px-6 py-2 rounded-lg font-bold transition-all text-slate-600 hover:bg-slate-300";
+                renderMembers();
+            } else {
+                btnTree.className = "px-6 py-2 rounded-lg font-bold transition-all text-blue-600 bg-white shadow-sm";
+                btnList.className = "px-6 py-2 rounded-lg font-bold transition-all text-slate-600 hover:bg-slate-300";
+                renderTree();
+            }
+        }
+
+        function updateParentOptions(selectedId = null) {
+            const gen = parseInt(document.getElementById('generation').value);
+            const select = document.getElementById('parent-id');
+            const editId = document.getElementById('edit-id').value;
+            select.innerHTML = '';
+
+            if (isNaN(gen) || gen <= 1) {
+                select.innerHTML = gen === 1 ? '<option value="">-- Là Thủy Tổ --</option>' : '<option value="">-- Nhập Đời thứ trước --</option>';
+                return;
+            }
+
+            const potentialParents = members.filter(m => m.generation === gen - 1 && m.id !== editId);
+            select.innerHTML = potentialParents.length ? '<option value="">-- Chọn Cha/Mẹ --</option>' : '<option value="">-- Không có ai ở đời trước --</option>';
+            
+            potentialParents.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.fullname} (Đời ${p.generation})`;
+                if (p.id === selectedId) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+
+        function openModal(id = null) {
+            const form = document.getElementById('member-form');
+            form.reset();
+            document.getElementById('edit-id').value = id || '';
+            document.getElementById('modal-title').textContent = id ? 'Chỉnh sửa thông tin' : 'Thêm thành viên mới';
+            
+            if (id) {
+                const m = members.find(item => item.id === id);
+                // Main info
+                document.getElementById('fullname').value = m.fullname;
+                document.getElementById('generation').value = m.generation;
+                document.getElementById('gender').value = m.gender;
+                document.getElementById('birthdate').value = m.birthdate || '';
+                document.getElementById('birth-type').value = m.birthType || 'Dương lịch';
+                document.getElementById('life-status').value = m.lifeStatus;
+                document.getElementById('deathdate').value = m.deathdate || '';
+                document.getElementById('death-type').value = m.deathType || 'Âm lịch';
+                document.getElementById('grave-location').value = m.graveLocation || '';
+                updateParentOptions(m.parentId);
+
+                // Spouse info
+                document.getElementById('has-spouse').checked = m.hasSpouse || false;
+                if(m.hasSpouse) {
+                    document.getElementById('spouse-name').value = m.spouseName || '';
+                    document.getElementById('spouse-birthdate').value = m.spouseBirthdate || '';
+                    document.getElementById('spouse-birth-type').value = m.spouseBirthType || 'Dương lịch';
+                    document.getElementById('spouse-life-status').value = m.spouseLifeStatus || 'Còn sống';
+                    document.getElementById('spouse-deathdate').value = m.spouseDeathdate || '';
+                    document.getElementById('spouse-death-type').value = m.spouseDeathType || 'Âm lịch';
+                    document.getElementById('spouse-grave-location').value = m.spouseGraveLocation || '';
+                }
+            }
+            toggleDeathFields();
+            toggleSpouseFields();
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        document.getElementById('member-form').onsubmit = function(e) {
+            e.preventDefault();
+            const id = document.getElementById('edit-id').value || 'M' + Date.now();
+            
+            const hasSpouse = document.getElementById('has-spouse').checked;
+            
+            const data = {
+                id,
+                fullname: formatInput(document.getElementById('fullname').value),
+                generation: parseInt(document.getElementById('generation').value),
+                gender: document.getElementById('gender').value,
+                parentId: document.getElementById('parent-id').value,
+                birthdate: document.getElementById('birthdate').value,
+                birthType: document.getElementById('birth-type').value,
+                lifeStatus: document.getElementById('life-status').value,
+                deathdate: document.getElementById('deathdate').value,
+                deathType: document.getElementById('death-type').value,
+                graveLocation: formatInput(document.getElementById('grave-location').value),
+                
+                // Spouse data
+                hasSpouse: hasSpouse,
+                spouseName: hasSpouse ? formatInput(document.getElementById('spouse-name').value) : '',
+                spouseBirthdate: hasSpouse ? document.getElementById('spouse-birthdate').value : '',
+                spouseBirthType: hasSpouse ? document.getElementById('spouse-birth-type').value : 'Dương lịch',
+                spouseLifeStatus: hasSpouse ? document.getElementById('spouse-life-status').value : 'Còn sống',
+                spouseDeathdate: hasSpouse ? document.getElementById('spouse-deathdate').value : '',
+                spouseDeathType: hasSpouse ? document.getElementById('spouse-death-type').value : 'Âm lịch',
+                spouseGraveLocation: hasSpouse ? formatInput(document.getElementById('spouse-grave-location').value) : ''
+            };
+
+            const idx = members.findIndex(m => m.id === id);
+            if (idx > -1) members[idx] = data;
+            else members.push(data);
+            saveToLocal();
+            closeModal();
+        };
+
+        function deleteMember(id) {
+            if (confirm('Bạn có chắc chắn muốn xóa?')) {
+                members = members.filter(m => m.id !== id);
+                members.forEach(m => { if(m.parentId === id) m.parentId = ''; });
+                saveToLocal();
+            }
+        }
+
+        function renderMembers() {
+            const tbody = document.getElementById('member-table-body');
+            const search = document.getElementById('search-input').value.toLowerCase();
+            tbody.innerHTML = '';
+            const filtered = members.filter(m => m.fullname.toLowerCase().includes(search) || 
+                                                 (m.graveLocation && m.graveLocation.toLowerCase().includes(search)) ||
+                                                 (m.spouseName && m.spouseName.toLowerCase().includes(search)))
+                                    .sort((a,b) => a.generation - b.generation);
+            filtered.forEach(m => {
+                // Info for Main Member
+                const ageStr = getAgeStrFromDates(m.birthdate, m.lifeStatus, m.deathdate);
+                const ageDisplay = ageStr ? ` <span class="font-semibold ${m.lifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-blue-600'}">(${ageStr})</span>` : '';
+
+                // Info for Spouse (if exists)
+                let spouseInfoHtml = '';
+                if (m.hasSpouse && m.spouseName) {
+                    const spouseAgeStr = getAgeStrFromDates(m.spouseBirthdate, m.spouseLifeStatus, m.spouseDeathdate);
+                    const sAgeDisplay = spouseAgeStr ? ` <span class="font-semibold ${m.spouseLifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-pink-600'}">(${spouseAgeStr})</span>` : '';
+                    spouseInfoHtml = `
+                        <div class="mt-3 pt-3 border-t border-dashed border-slate-200">
+                            <span class="font-bold text-pink-600 text-[10px] uppercase bg-pink-50 px-2 py-1 rounded">Vợ/Chồng</span>
+                            <span class="font-bold text-slate-700 ml-2">${m.spouseName}</span>
+                            <div class="text-[13px] mt-1 text-slate-600">
+                                <div>${m.spouseBirthdate || '?'} - ${m.spouseLifeStatus === 'Đã mất' ? (m.spouseDeathdate || '?') : 'Nay'}${sAgeDisplay}</div>
+                                ${m.spouseGraveLocation ? `<div class="text-[11px] text-red-500 italic mt-1">📍 Mộ: ${m.spouseGraveLocation}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = "border-b hover:bg-slate-50 transition align-top";
+                tr.innerHTML = `
+                    <td class="p-4 font-black text-blue-600 whitespace-nowrap">Đời ${m.generation}</td>
+                    <td class="p-4 font-bold text-slate-800">${m.fullname}</td>
+                    <td class="p-4 text-sm text-slate-600 min-w-[300px]">
+                        <div>
+                            <div>${m.birthdate || '?'} - ${m.lifeStatus === 'Đã mất' ? (m.deathdate || '?') : 'Nay'}${ageDisplay}</div>
+                            ${m.graveLocation ? `<div class="text-[11px] text-red-500 italic mt-1">📍 Mộ: ${m.graveLocation}</div>` : ''}
+                        </div>
+                        ${spouseInfoHtml}
+                    </td>
+                    <td class="p-4 text-right whitespace-nowrap">
+                        <button onclick="openModal('${m.id}')" class="text-blue-600 font-bold px-2 hover:underline">Sửa</button>
+                        <button onclick="deleteMember('${m.id}')" class="text-red-600 font-bold px-2 ml-2 hover:underline">Xóa</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        /* --- LOGIC CÂY NÂNG CAO --- */
+
+        function zoomTree(val) {
+            currentZoom = Math.min(Math.max(0.2, currentZoom + val), 2);
+            applyZoom();
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            applyZoom();
+            setTimeout(autoFitTree, 50);
+        }
+
+        function applyZoom() {
+            const container = document.getElementById('tree-canvas');
+            const wrapper = document.getElementById('tree-wrapper');
+            const viewport = document.getElementById('tree-viewport');
+            
+            if (!container || !wrapper || !viewport) return;
+
+            const unscaledWidth = container.offsetWidth;
+            const unscaledHeight = container.offsetHeight;
+            const scaledWidth = unscaledWidth * currentZoom;
+            const scaledHeight = unscaledHeight * currentZoom;
+            const viewportWidth = viewport.clientWidth;
+            
+            let translateX = 0;
+            if (scaledWidth < (viewportWidth - 160)) {
+                translateX = (viewportWidth - 160 - scaledWidth) / 2;
+            }
+            
+            container.style.transform = `translate(${translateX}px, 0) scale(${currentZoom})`;
+            
+            wrapper.style.width = `${scaledWidth + 160}px`;
+            wrapper.style.height = `${scaledHeight + 160}px`;
+        }
+
+        function autoFitTree() {
+            const canvas = document.getElementById('tree-canvas');
+            const viewport = document.getElementById('tree-viewport');
+            if (canvas.offsetWidth === 0) return;
+            
+            const ratio = (viewport.clientWidth - 160) / canvas.offsetWidth;
+            if (ratio < 1) {
+                currentZoom = Math.max(0.3, ratio);
+            } else {
+                currentZoom = 1;
+            }
+            applyZoom();
+        }
+
+        function renderTree() {
+            const canvas = document.getElementById('tree-canvas');
+            canvas.innerHTML = '';
+            if (members.length === 0) return;
+
+            const gens = [...new Set(members.map(m => m.generation))].sort((a, b) => a - b);
+            
+            gens.forEach(genNum => {
+                const levelDiv = document.createElement('div');
+                levelDiv.className = 'tree-level';
+                const currentGenMembers = members.filter(m => m.generation === genNum);
+                
+                const parentsInThisLevel = [...new Set(currentGenMembers.map(m => m.parentId))];
+                
+                parentsInThisLevel.forEach(pid => {
+                    const siblings = currentGenMembers.filter(m => m.parentId === pid);
+                    const siblingGroup = document.createElement('div');
+                    siblingGroup.className = 'sibling-group';
+                    
+                    siblings.forEach(m => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = `member-wrapper ${m.parentId ? 'has-parent' : ''} ${members.some(c => c.parentId === m.id) ? 'has-children' : ''}`;
+                        
+                        const statusClass = m.lifeStatus === 'Đã mất' ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-700';
+                        const ageStr = getAgeStrFromDates(m.birthdate, m.lifeStatus, m.deathdate);
+
+                        const mainHTML = `
+                            <div class="status-badge ${statusClass} ${m.hasSpouse ? 'left-badge' : ''}">${m.lifeStatus}</div>
+                            <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Đời thứ ${m.generation}</div>
+                            <div class="text-lg font-black text-slate-800 leading-tight mb-2">${m.fullname}</div>
+                            <div class="text-[10px] text-slate-500 bg-slate-50 py-1.5 px-2 rounded-lg border border-slate-100 flex flex-col gap-1 w-full">
+                                <div>${m.birthdate || '?'}${m.birthType === 'Âm lịch' ? ' (ÂL)' : ''} ➔ ${m.lifeStatus === 'Đã mất' ? (m.deathdate || '?') : 'Nay'}</div>
+                                ${ageStr ? `<div class="font-bold ${m.lifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-blue-600'}">${ageStr}</div>` : ''}
+                                ${m.graveLocation ? `<div class="text-red-500 italic font-medium mt-1">📍 Mộ: ${m.graveLocation}</div>` : ''}
+                            </div>
+                        `;
+
+                        const card = document.createElement('div');
+                        
+                        if (m.hasSpouse && m.spouseName) {
+                            card.className = `member-card has-spouse ${m.gender === 'Nam' ? 'gender-male' : 'gender-female'}`;
+                            
+                            const sStatusClass = m.spouseLifeStatus === 'Đã mất' ? 'bg-slate-200 text-slate-600' : 'bg-pink-100 text-pink-700';
+                            const sAgeStr = getAgeStrFromDates(m.spouseBirthdate, m.spouseLifeStatus, m.spouseDeathdate);
+                            
+                            const spouseHTML = `
+                                <div class="status-badge ${sStatusClass}">${m.spouseLifeStatus}</div>
+                                <div class="text-[9px] font-black text-pink-400 uppercase tracking-widest mb-1">Vợ/Chồng</div>
+                                <div class="text-lg font-black text-slate-700 leading-tight mb-2">${m.spouseName}</div>
+                                <div class="text-[10px] text-slate-500 bg-pink-50/50 py-1.5 px-2 rounded-lg border border-pink-50 flex flex-col gap-1 w-full">
+                                    <div>${m.spouseBirthdate || '?'}${m.spouseBirthType === 'Âm lịch' ? ' (ÂL)' : ''} ➔ ${m.spouseLifeStatus === 'Đã mất' ? (m.spouseDeathdate || '?') : 'Nay'}</div>
+                                    ${sAgeStr ? `<div class="font-bold ${m.spouseLifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-pink-600'}">${sAgeStr}</div>` : ''}
+                                    ${m.spouseGraveLocation ? `<div class="text-red-500 italic font-medium mt-1">📍 Mộ: ${m.spouseGraveLocation}</div>` : ''}
+                                </div>
+                            `;
+
+                            card.innerHTML = `
+                                <div class="card-half">${mainHTML}</div>
+                                <div class="card-half bg-slate-50/30">${spouseHTML}</div>
+                            `;
+                        } else {
+                            card.className = `member-card ${m.gender === 'Nam' ? 'gender-male' : 'gender-female'}`;
+                            card.innerHTML = mainHTML;
+                        }
+
+                        card.onclick = () => openModal(m.id);
+                        wrapper.appendChild(card);
+                        siblingGroup.appendChild(wrapper);
+                    });
+
+                    // Vẽ đường kẻ ngang
+                    if (siblings.length > 1) {
+                        const connector = document.createElement('div');
+                        connector.className = 'sibling-connector';
+                        
+                        setTimeout(() => {
+                            const wrappers = siblingGroup.querySelectorAll('.member-wrapper');
+                            const first = wrappers[0];
+                            const last = wrappers[wrappers.length - 1];
+                            
+                            const left = first.offsetLeft + (first.offsetWidth / 2);
+                            const right = last.offsetLeft + (last.offsetWidth / 2);
+                            connector.style.left = left + 'px';
+                            connector.style.width = (right - left) + 'px';
+                        }, 50);
+                        
+                        siblingGroup.appendChild(connector);
+                    }
+                    levelDiv.appendChild(siblingGroup);
+                });
+                canvas.appendChild(levelDiv);
+            });
+
+            setTimeout(autoFitTree, 100);
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total').textContent = members.length;
+            document.getElementById('stat-generations').textContent = members.length > 0 ? Math.max(...members.map(m => m.generation)) : 0;
+            document.getElementById('stat-anniversaries').textContent = members.filter(m => m.lifeStatus === 'Đã mất').length;
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(members, null, 2)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `giapha.json`;
+            a.click();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = JSON.parse(e.target.result);
+                if(Array.isArray(data)) { members = data; saveToLocal(); alert("Đã nhập dữ liệu thành công!"); }
+            };
+            reader.readAsText(file);
+        }
+
+        window.onload = () => { renderMembers(); updateStats(); };
+
+        // --- KÉO THẢ (DRAG TO PAN) SƠ ĐỒ ---
+        const treeViewport = document.getElementById('tree-viewport');
+        let isDown = false;
+        let startX, startY, scrollLeft, scrollTop;
+
+        treeViewport.addEventListener('mousedown', (e) => {
+            isDown = true;
+            startX = e.pageX - treeViewport.offsetLeft;
+            startY = e.pageY - treeViewport.offsetTop;
+            scrollLeft = treeViewport.scrollLeft;
+            scrollTop = treeViewport.scrollTop;
+        });
+        
+        treeViewport.addEventListener('mouseleave', () => { isDown = false; });
+        treeViewport.addEventListener('mouseup', () => { isDown = false; });
+        
+        treeViewport.addEventListener('mousemove', (e) => {
+            if (!isDown) return;
+            e.preventDefault();
+            const x = e.pageX - treeViewport.offsetLeft;
+            const y = e.pageY - treeViewport.offsetTop;
+            const walkX = (x - startX) * 1.5;
+            const walkY = (y - startY) * 1.5;
+            treeViewport.scrollLeft = scrollLeft - walkX;
+            treeViewport.scrollTop = scrollTop - walkY;
+        });
+    </script>
+</body>
+</html>
