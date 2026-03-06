@@ -219,6 +219,9 @@
                 <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center transition shadow-lg active:scale-95">
                     Thêm thành viên
                 </button>
+                <button id="btn-undo-import" onclick="undoImport()" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white px-5 py-2.5 rounded-xl font-bold transition shadow-lg active:scale-95">
+                    Hoàn tác nhập
+                </button>
                 <button onclick="document.getElementById('import-file').click()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-bold transition">
                     Nhập dữ liệu
                 </button>
@@ -897,9 +900,36 @@
             a.click();
         }
 
+        function checkBackup() {
+            const hasBackup = localStorage.getItem('family_v3_data_backup');
+            const undoBtn = document.getElementById('btn-undo-import');
+            if(undoBtn) {
+                if(hasBackup) undoBtn.classList.remove('hidden');
+                else undoBtn.classList.add('hidden');
+            }
+        }
+
+        function undoImport() {
+            if(!confirm('Bạn có chắc chắn muốn hoàn tác về thời điểm trước lần nhập dữ liệu gần nhất?')) return;
+            const backup = localStorage.getItem('family_v3_data_backup');
+            if (backup) {
+                members = JSON.parse(backup);
+                saveToLocal();
+                localStorage.removeItem('family_v3_data_backup'); // Xóa backup sau khi đã khôi phục
+                checkBackup(); // Ẩn nút hoàn tác
+                alert('Đã hoàn tác khôi phục dữ liệu thành công!');
+            } else {
+                alert('Không tìm thấy bản sao lưu nào để hoàn tác!');
+            }
+        }
+
         async function importData(event) {
             const files = event.target.files;
             if (!files || files.length === 0) return;
+
+            // TỰ ĐỘNG SAO LƯU DỮ LIỆU HIỆN TẠI TRƯỚC KHI NHẬP
+            localStorage.setItem('family_v3_data_backup', JSON.stringify(members));
+            checkBackup();
 
             let addedCount = 0;
             let updatedCount = 0;
@@ -931,13 +961,13 @@
             }
 
             saveToLocal();
-            alert(`Đã nhập dữ liệu thành công từ ${files.length} file!\n- Thêm mới: ${addedCount} người\n- Cập nhật: ${updatedCount} người`);
+            alert(`Đã nhập dữ liệu thành công từ ${files.length} file!\n- Thêm mới: ${addedCount} người\n- Cập nhật: ${updatedCount} người\n\n(Lưu ý: Nếu cây gia phả bị lỗi, bạn có thể bấm nút "Hoàn tác nhập" để khôi phục lại)`);
             
             // Reset input để có thể chọn lại chính file đó nếu cần
             event.target.value = '';
         }
 
-        window.onload = () => { renderMembers(); updateStats(); };
+        window.onload = () => { renderMembers(); updateStats(); checkBackup(); };
 
         // --- KÉO THẢ (DRAG TO PAN) SƠ ĐỒ ---
         const treeViewport = document.getElementById('tree-viewport');
