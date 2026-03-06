@@ -220,7 +220,7 @@
                     Thêm thành viên
                 </button>
                 <button id="btn-undo-import" onclick="undoImport()" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white px-5 py-2.5 rounded-xl font-bold transition shadow-lg active:scale-95">
-                    Hoàn tác nhập
+                    Hoàn tác
                 </button>
                 <button onclick="document.getElementById('import-file').click()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-bold transition">
                     Nhập dữ liệu
@@ -228,6 +228,9 @@
                 <input type="file" id="import-file" class="hidden" accept=".json" multiple onchange="importData(event)">
                 <button onclick="exportData()" class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold transition">
                     Xuất dữ liệu (.json)
+                </button>
+                <button onclick="clearAllData()" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-5 py-2.5 rounded-xl font-bold transition">
+                    Xóa tất cả
                 </button>
             </div>
         </header>
@@ -910,7 +913,7 @@
         }
 
         function undoImport() {
-            if(!confirm('Bạn có chắc chắn muốn hoàn tác về thời điểm trước lần nhập dữ liệu gần nhất?')) return;
+            if(!confirm('Bạn có chắc chắn muốn hoàn tác về thời điểm trước lần nhập/xóa dữ liệu gần nhất?')) return;
             const backup = localStorage.getItem('family_v3_data_backup');
             if (backup) {
                 members = JSON.parse(backup);
@@ -920,6 +923,23 @@
                 alert('Đã hoàn tác khôi phục dữ liệu thành công!');
             } else {
                 alert('Không tìm thấy bản sao lưu nào để hoàn tác!');
+            }
+        }
+
+        function clearAllData() {
+            if (members.length === 0) {
+                alert("Dữ liệu hiện đang trống sẵn!");
+                return;
+            }
+            if (confirm("⚠️ CẢNH BÁO: Bạn có chắc chắn muốn XÓA TRẮNG TOÀN BỘ dữ liệu gia phả hiện tại không?\n\n(Dữ liệu sẽ được sao lưu tạm thời để bạn có thể Hoàn tác, nhưng tốt nhất hãy Xuất dữ liệu ra file trước để đảm bảo an toàn)")) {
+                // Tự động sao lưu trước khi xóa trắng
+                localStorage.setItem('family_v3_data_backup', JSON.stringify(members));
+                checkBackup();
+                
+                // Làm rỗng mảng và lưu lại
+                members = [];
+                saveToLocal();
+                alert("Đã xóa trắng toàn bộ dữ liệu.");
             }
         }
 
