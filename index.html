@@ -222,7 +222,7 @@
                 <button onclick="document.getElementById('import-file').click()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-bold transition">
                     Nhập dữ liệu
                 </button>
-                <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
+                <input type="file" id="import-file" class="hidden" accept=".json" multiple onchange="importData(event)">
                 <button onclick="exportData()" class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold transition">
                     Xuất dữ liệu (.json)
                 </button>
@@ -325,7 +325,7 @@
                     
                     <div>
                         <label class="block text-sm font-bold text-slate-700 mb-2">Giới tính *</label>
-                        <select id="gender" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
+                        <select id="gender" onchange="updateSpouseUIColors()" class="w-full p-3 rounded-xl border border-slate-200 bg-white">
                             <option value="Nam">Nam</option>
                             <option value="Nữ">Nữ</option>
                         </select>
@@ -384,15 +384,15 @@
                     <div class="md:col-span-2 pt-4 border-t">
                         <label class="flex items-center gap-3 cursor-pointer">
                             <input type="checkbox" id="has-spouse" onchange="toggleSpouseFields()" class="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                            <span class="text-base font-bold text-pink-600">Đã kết hôn (Thêm thông tin Vợ/Chồng)</span>
+                            <span id="spouse-toggle-label" class="text-base font-bold text-pink-600">Đã kết hôn (Thêm thông tin Vợ)</span>
                         </label>
                     </div>
 
                     <!-- Khối thông tin Vợ/Chồng -->
                     <div id="spouse-fields-container" class="md:col-span-2 hidden grid-cols-1 md:grid-cols-2 gap-6 bg-pink-50 p-5 rounded-2xl border border-pink-100">
                         <div class="md:col-span-2">
-                            <label class="block text-sm font-bold text-slate-700 mb-2">Họ và Tên Vợ/Chồng</label>
-                            <input type="text" id="spouse-name" class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="trần thị b">
+                            <label id="spouse-name-label" class="block text-sm font-bold text-slate-700 mb-2">Họ và Tên Vợ</label>
+                            <input type="text" id="spouse-name" class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-400 outline-none" placeholder="Nhập tên vợ/chồng...">
                         </div>
 
                         <div class="md:col-span-2 grid grid-cols-3 gap-3">
@@ -501,21 +501,33 @@
         }
 
         function toggleSpouseFields() {
-            const hasSpouse = document.getElementById('has-spouse').checked;
-            const container = document.getElementById('spouse-fields-container');
-            if(hasSpouse) {
-                container.classList.remove('hidden');
-                container.classList.add('grid');
-            } else {
-                container.classList.add('hidden');
-                container.classList.remove('grid');
-            }
+            updateSpouseUIColors();
             toggleSpouseDeathFields();
         }
 
         function toggleSpouseDeathFields() {
             const status = document.getElementById('spouse-life-status').value;
             document.getElementById('spouse-death-fields').classList.toggle('hidden', status !== 'Đã mất');
+        }
+
+        function updateSpouseUIColors() {
+            const gender = document.getElementById('gender').value;
+            const container = document.getElementById('spouse-fields-container');
+            const toggleLabel = document.getElementById('spouse-toggle-label');
+            const nameLabel = document.getElementById('spouse-name-label');
+            const hasSpouse = document.getElementById('has-spouse').checked;
+            
+            if (gender === 'Nam') { // Vợ
+                toggleLabel.className = "text-base font-bold text-pink-600";
+                toggleLabel.textContent = "Đã kết hôn (Thêm thông tin Vợ)";
+                nameLabel.textContent = "Họ và Tên Vợ";
+                container.className = `md:col-span-2 ${hasSpouse ? 'grid' : 'hidden'} grid-cols-1 md:grid-cols-2 gap-6 bg-pink-50 p-5 rounded-2xl border border-pink-100`;
+            } else { // Chồng
+                toggleLabel.className = "text-base font-bold text-blue-600";
+                toggleLabel.textContent = "Đã kết hôn (Thêm thông tin Chồng)";
+                nameLabel.textContent = "Họ và Tên Chồng";
+                container.className = `md:col-span-2 ${hasSpouse ? 'grid' : 'hidden'} grid-cols-1 md:grid-cols-2 gap-6 bg-blue-50 p-5 rounded-2xl border border-blue-100`;
+            }
         }
 
         function switchView(view) {
@@ -548,7 +560,7 @@
             }
 
             const potentialParents = members.filter(m => m.generation === gen - 1 && m.id !== editId);
-            select.innerHTML = potentialParents.length ? '<option value="">-- Chọn Cha/Mẹ --</option>' : '<option value="">-- Không có ai ở đời trước --</option>';
+            select.innerHTML = potentialParents.length ? '<option value="">-- Chọn Cha --</option>' : '<option value="">-- Không có ai ở đời trước --</option>';
             
             potentialParents.forEach(p => {
                 const opt = document.createElement('option');
@@ -592,7 +604,8 @@
                 }
             }
             toggleDeathFields();
-            toggleSpouseFields();
+            updateSpouseUIColors();
+            toggleSpouseDeathFields();
             document.getElementById('modal').classList.remove('hidden');
         }
 
@@ -654,16 +667,22 @@
             filtered.forEach(m => {
                 // Info for Main Member
                 const ageStr = getAgeStrFromDates(m.birthdate, m.lifeStatus, m.deathdate);
-                const ageDisplay = ageStr ? ` <span class="font-semibold ${m.lifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-blue-600'}">(${ageStr})</span>` : '';
+                const mainAgeColor = m.gender === 'Nam' ? 'text-blue-600' : 'text-pink-600';
+                const ageDisplay = ageStr ? ` <span class="font-semibold ${m.lifeStatus === 'Đã mất' ? 'text-slate-700' : mainAgeColor}">(${ageStr})</span>` : '';
 
                 // Info for Spouse (if exists)
                 let spouseInfoHtml = '';
                 if (m.hasSpouse && m.spouseName) {
+                    const spouseGender = m.gender === 'Nam' ? 'Nữ' : 'Nam';
+                    const sLabelColor = spouseGender === 'Nữ' ? 'text-pink-600 bg-pink-50' : 'text-blue-600 bg-blue-50';
+                    const sAgeColor = spouseGender === 'Nữ' ? 'text-pink-600' : 'text-blue-600';
+                    const sTitle = spouseGender === 'Nữ' ? 'Vợ' : 'Chồng';
+
                     const spouseAgeStr = getAgeStrFromDates(m.spouseBirthdate, m.spouseLifeStatus, m.spouseDeathdate);
-                    const sAgeDisplay = spouseAgeStr ? ` <span class="font-semibold ${m.spouseLifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-pink-600'}">(${spouseAgeStr})</span>` : '';
+                    const sAgeDisplay = spouseAgeStr ? ` <span class="font-semibold ${m.spouseLifeStatus === 'Đã mất' ? 'text-slate-700' : sAgeColor}">(${spouseAgeStr})</span>` : '';
                     spouseInfoHtml = `
                         <div class="mt-3 pt-3 border-t border-dashed border-slate-200">
-                            <span class="font-bold text-pink-600 text-[10px] uppercase bg-pink-50 px-2 py-1 rounded">Vợ/Chồng</span>
+                            <span class="font-bold ${sLabelColor} text-[10px] uppercase px-2 py-1 rounded">${sTitle}</span>
                             <span class="font-bold text-slate-700 ml-2">${m.spouseName}</span>
                             <div class="text-[13px] mt-1 text-slate-600">
                                 <div>${m.spouseBirthdate || '?'} - ${m.spouseLifeStatus === 'Đã mất' ? (m.spouseDeathdate || '?') : 'Nay'}${sAgeDisplay}</div>
@@ -770,6 +789,7 @@
                         
                         const statusClass = m.lifeStatus === 'Đã mất' ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-700';
                         const ageStr = getAgeStrFromDates(m.birthdate, m.lifeStatus, m.deathdate);
+                        const mainAgeColor = m.gender === 'Nam' ? 'text-blue-600' : 'text-pink-600';
 
                         const mainHTML = `
                             <div class="status-badge ${statusClass} ${m.hasSpouse ? 'left-badge' : ''}">${m.lifeStatus}</div>
@@ -777,7 +797,7 @@
                             <div class="text-lg font-black text-slate-800 leading-tight mb-2">${m.fullname}</div>
                             <div class="text-[10px] text-slate-500 bg-slate-50 py-1.5 px-2 rounded-lg border border-slate-100 flex flex-col gap-1 w-full">
                                 <div>${m.birthdate || '?'}${m.birthType === 'Âm lịch' ? ' (ÂL)' : ''} ➔ ${m.lifeStatus === 'Đã mất' ? (m.deathdate || '?') : 'Nay'}</div>
-                                ${ageStr ? `<div class="font-bold ${m.lifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-blue-600'}">${ageStr}</div>` : ''}
+                                ${ageStr ? `<div class="font-bold ${m.lifeStatus === 'Đã mất' ? 'text-slate-700' : mainAgeColor}">${ageStr}</div>` : ''}
                                 ${m.graveLocation ? `<div class="text-red-500 italic font-medium mt-1">📍 Mộ: ${m.graveLocation}</div>` : ''}
                             </div>
                         `;
@@ -785,23 +805,45 @@
                         const card = document.createElement('div');
                         
                         if (m.hasSpouse && m.spouseName) {
-                            card.className = `member-card has-spouse ${m.gender === 'Nam' ? 'gender-male' : 'gender-female'}`;
+                            card.className = `member-card has-spouse`; // Loại bỏ class giới tính chung để custom viền màu
                             
-                            const sStatusClass = m.spouseLifeStatus === 'Đã mất' ? 'bg-slate-200 text-slate-600' : 'bg-pink-100 text-pink-700';
+                            const spouseGender = m.gender === 'Nam' ? 'Nữ' : 'Nam';
+                            const sTitle = spouseGender === 'Nữ' ? 'VỢ' : 'CHỒNG';
+                            const sTitleColor = spouseGender === 'Nữ' ? 'text-pink-400' : 'text-blue-400';
+                            const sBgColor = spouseGender === 'Nữ' ? 'bg-pink-50/50 border-pink-50' : 'bg-blue-50/50 border-blue-50';
+                            const sAgeColor = spouseGender === 'Nữ' ? 'text-pink-600' : 'text-blue-600';
+                            
+                            let sStatusClass = 'bg-slate-200 text-slate-600';
+                            if (m.spouseLifeStatus !== 'Đã mất') {
+                                sStatusClass = spouseGender === 'Nữ' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700';
+                            }
+
                             const sAgeStr = getAgeStrFromDates(m.spouseBirthdate, m.spouseLifeStatus, m.spouseDeathdate);
                             
                             const spouseHTML = `
                                 <div class="status-badge ${sStatusClass}">${m.spouseLifeStatus}</div>
-                                <div class="text-[9px] font-black text-pink-400 uppercase tracking-widest mb-1">Vợ/Chồng</div>
+                                <div class="text-[9px] font-black ${sTitleColor} uppercase tracking-widest mb-1">${sTitle}</div>
                                 <div class="text-lg font-black text-slate-700 leading-tight mb-2">${m.spouseName}</div>
-                                <div class="text-[10px] text-slate-500 bg-pink-50/50 py-1.5 px-2 rounded-lg border border-pink-50 flex flex-col gap-1 w-full">
+                                <div class="text-[10px] text-slate-500 ${sBgColor} py-1.5 px-2 rounded-lg border flex flex-col gap-1 w-full">
                                     <div>${m.spouseBirthdate || '?'}${m.spouseBirthType === 'Âm lịch' ? ' (ÂL)' : ''} ➔ ${m.spouseLifeStatus === 'Đã mất' ? (m.spouseDeathdate || '?') : 'Nay'}</div>
-                                    ${sAgeStr ? `<div class="font-bold ${m.spouseLifeStatus === 'Đã mất' ? 'text-slate-700' : 'text-pink-600'}">${sAgeStr}</div>` : ''}
+                                    ${sAgeStr ? `<div class="font-bold ${m.spouseLifeStatus === 'Đã mất' ? 'text-slate-700' : sAgeColor}">${sAgeStr}</div>` : ''}
                                     ${m.spouseGraveLocation ? `<div class="text-red-500 italic font-medium mt-1">📍 Mộ: ${m.spouseGraveLocation}</div>` : ''}
                                 </div>
                             `;
 
+                            // Custom thanh viền trên (Top border) chia 2 màu tương ứng với 2 nửa thẻ
+                            const mainBgColor = m.gender === 'Nam' ? 'bg-blue-500' : 'bg-pink-500';
+                            const spouseBgColor = spouseGender === 'Nam' ? 'bg-blue-500' : 'bg-pink-500';
+
+                            const borderOverlay = `
+                                <div class="absolute top-[-2px] left-[-2px] right-[-2px] h-[6px] flex rounded-t-[16px] overflow-hidden z-10">
+                                    <div class="flex-1 ${mainBgColor}"></div>
+                                    <div class="flex-1 ${spouseBgColor}"></div>
+                                </div>
+                            `;
+
                             card.innerHTML = `
+                                ${borderOverlay}
                                 <div class="card-half">${mainHTML}</div>
                                 <div class="card-half bg-slate-50/30">${spouseHTML}</div>
                             `;
@@ -855,15 +897,44 @@
             a.click();
         }
 
-        function importData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const data = JSON.parse(e.target.result);
-                if(Array.isArray(data)) { members = data; saveToLocal(); alert("Đã nhập dữ liệu thành công!"); }
-            };
-            reader.readAsText(file);
+        async function importData(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            let addedCount = 0;
+            let updatedCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    const text = await file.text();
+                    const data = JSON.parse(text);
+                    
+                    if (Array.isArray(data)) {
+                        data.forEach(importedMember => {
+                            const existingIndex = members.findIndex(m => m.id === importedMember.id);
+                            if (existingIndex > -1) {
+                                // Ghi đè (cập nhật) nếu trùng ID
+                                members[existingIndex] = importedMember;
+                                updatedCount++;
+                            } else {
+                                // Thêm mới nếu chưa có ID này
+                                members.push(importedMember);
+                                addedCount++;
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error("Lỗi khi đọc file:", file.name, error);
+                    alert(`Có lỗi xảy ra khi đọc file: ${file.name}`);
+                }
+            }
+
+            saveToLocal();
+            alert(`Đã nhập dữ liệu thành công từ ${files.length} file!\n- Thêm mới: ${addedCount} người\n- Cập nhật: ${updatedCount} người`);
+            
+            // Reset input để có thể chọn lại chính file đó nếu cần
+            event.target.value = '';
         }
 
         window.onload = () => { renderMembers(); updateStats(); };
